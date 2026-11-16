@@ -59,17 +59,24 @@ def main(argv: list[str] | None = None) -> int:
         assistant = ClaudeAssistant(cfg.claude, cfg.max_title_length - len("[PERFORMANCE][EXT]-"))
 
     while True:
-        book = CsvSpreadsheet(args.csv_dir) if args.csv_dir else GoogleSpreadsheet(cfg)
-        report = Syncer(
-            cfg, gitlab,
-            assistant=assistant,
-            dry_run=args.dry_run,
-            status_sync=args.status_sync,
-            only_rows=set(args.row) if args.row else None,
-        ).run(book, types)
-        logging.info("Selesai: %s", report.summary())
-        if not args.watch:
-            return 1 if report.failed else 0
+        try:
+            book = CsvSpreadsheet(args.csv_dir) if args.csv_dir else GoogleSpreadsheet(cfg)
+            report = Syncer(
+                cfg, gitlab,
+                assistant=assistant,
+                dry_run=args.dry_run,
+                status_sync=args.status_sync,
+                only_rows=set(args.row) if args.row else None,
+            ).run(book, types)
+        except Exception:
+            if not args.watch:
+                raise
+            # in watch mode a network/auth hiccup must not kill the long-running process
+            logging.exception("Sync gagal, dicoba lagi dalam %s detik", args.watch)
+        else:
+            logging.info("Selesai: %s", report.summary())
+            if not args.watch:
+                return 1 if report.failed else 0
         time.sleep(args.watch)
 
 

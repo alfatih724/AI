@@ -148,6 +148,57 @@ terjadwal, pakai **Task Scheduler** (Windows) atau **cron** (macOS/Linux) yang m
 | `404` dari GitLab | `gitlab.project` salah, atau token tidak punya akses ke project |
 | `SSL: CERTIFICATE_VERIFY_FAILED` | GitLab self-hosted dengan sertifikat internal. Set `REQUESTS_CA_BUNDLE` ke CA kantor (atau `verify_ssl: false` untuk uji coba saja) |
 
+## Menjalankan di server (Docker)
+
+Butuh **Docker** dan **Docker Compose v2** (`docker compose version`). Agent berjalan terus dengan
+`--watch` dan container otomatis restart kalau server reboot.
+
+**1. Ambil kode**
+
+```bash
+git clone https://github.com/fatur-berca/AI.git
+cd AI && git checkout claude/spreadsheet-gitlab-issue-agent-w9xevp   # sebelum PR di-merge
+cd tools/issue-log-agent
+```
+
+**2. Siapkan config & kredensial** (lihat langkah 3–4 di atas untuk cara membuatnya)
+
+```bash
+cp config.example.yaml config.yaml        # isi spreadsheet_id, gitlab.url, gitlab.project
+cp .env.example .env                      # isi GITLAB_TOKEN (dan ANTHROPIC_API_KEY jika dipakai)
+mkdir -p secrets
+cp /path/ke/key-service-account.json secrets/google-sa.json
+chmod 600 .env secrets/google-sa.json
+chmod 644 config.yaml                     # dibaca user non-root di dalam container
+```
+
+Biarkan `sheet.credentials_file` dan `gitlab.token` di `config.yaml` tetap `${...}`, karena nilainya
+diisi dari `docker-compose.yml` dan `.env`. Key JSON harus bisa dibaca UID 10001 di container, jadi
+kalau muncul `Permission denied`, jalankan `sudo chown 10001 secrets/google-sa.json`.
+
+**3. Build, cek dulu, lalu jalankan**
+
+```bash
+docker compose build
+docker compose run --rm issue-log-agent --dry-run -v   # baca sheet asli, tidak menulis apa pun
+docker compose up -d                                   # sync tiap SYNC_INTERVAL detik (default 300)
+```
+
+**Operasional**
+
+| Perintah | Fungsi |
+|---|---|
+| `docker compose logs -f` | Lihat log |
+| `docker compose run --rm issue-log-agent -v` | Sync sekali secara manual, di luar jadwal (tanpa argumen, `run` ikut memakai `--watch`) |
+| `docker compose restart` | Muat ulang setelah `config.yaml` / `.env` diubah |
+| `git pull && docker compose up -d --build` | Update ke versi terbaru |
+| `docker compose down` | Hentikan agent |
+
+Di mode watch, error sementara seperti jaringan putus atau API Google/GitLab down hanya dicatat di
+log. Agent mencoba lagi pada interval berikutnya. GitLab self-hosted dengan sertifikat internal: simpan
+CA di `secrets/ca.crt`, aktifkan baris mount-nya di `docker-compose.yml`, lalu set `REQUESTS_CA_BUNDLE`
+di `.env`.
+
 ## Pemakaian
 
 ```bash
@@ -204,6 +255,7 @@ pip install pytest && python -m pytest -q tests
 | `issue_log_agent/gitlab_client.py` | Client REST API GitLab v4 |
 | `issue_log_agent/sync.py` | Orkestrasi alur pelaporan backlog |
 | `issue_log_agent/__main__.py` | CLI |
+| `Dockerfile`, `docker-compose.yml`, `.env.example` | Deploy ke server dengan Docker |
 | `scripts/make_template.py` | Revisi Template v1 → v2 sesuai config |
 | `templates/` | Template Issue Backlog v1 (asli) dan v2 (hasil revisi) |
 | `examples/*.csv` | Contoh isi per tab (diambil dari contoh di slide) |

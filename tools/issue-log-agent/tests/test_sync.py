@@ -224,3 +224,25 @@ def test_unset_env_var_in_config_is_treated_as_empty(monkeypatch):
     assert cfg.gitlab.token == ""
     with pytest.raises(Exception, match="GITLAB_TOKEN"):
         load_config(ROOT / "config.example.yaml")
+
+
+def test_watch_mode_survives_sync_error(monkeypatch):
+    from issue_log_agent import __main__ as cli
+
+    class Stop(Exception):
+        pass
+
+    def broken_book(cfg):
+        raise OSError("koneksi ke Google terputus")
+
+    def fake_sleep(seconds):
+        raise Stop
+
+    monkeypatch.setattr(cli, "GoogleSpreadsheet", broken_book)
+    monkeypatch.setattr(cli.time, "sleep", fake_sleep)
+    argv = ["--config", str(ROOT / "config.example.yaml"), "--dry-run", "--no-claude"]
+
+    with pytest.raises(OSError):  # one-shot run still fails loudly
+        cli.main(argv)
+    with pytest.raises(Stop):  # watch mode logs the error and goes on to sleep
+        cli.main(argv + ["--watch", "60"])
