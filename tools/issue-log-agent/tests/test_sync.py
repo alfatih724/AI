@@ -258,8 +258,7 @@ def test_watch_mode_survives_sync_error(monkeypatch):
     monkeypatch.setattr(cli.time, "sleep", fake_sleep)
     argv = ["--config", str(ROOT / "config.example.yaml"), "--dry-run", "--no-claude"]
 
-    with pytest.raises(OSError):  # one-shot run still fails loudly
-        cli.main(argv)
+    assert cli.main(argv) == 1  # one-shot run reports the failure
     with pytest.raises(Stop):  # watch mode logs the error and goes on to sleep
         cli.main(argv + ["--watch", "60"])
 # ---- sheet.access: public (read-only, no Google credentials) ----

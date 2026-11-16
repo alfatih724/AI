@@ -69,24 +69,7 @@ def main(argv: list[str] | None = None) -> int:
 
     while True:
         try:
-            book = CsvSpreadsheet(args.csv_dir) if args.csv_dir else GoogleSpreadsheet(cfg)
-            report = Syncer(
-                cfg, gitlab,
-                assistant=assistant,
-                dry_run=args.dry_run,
-                status_sync=args.status_sync,
-                only_rows=set(args.row) if args.row else None,
-            ).run(book, types)
-        except Exception:
-            if not args.watch:
-                raise
-            # in watch mode a network/auth hiccup must not kill the long-running process
-            logging.exception("Sync gagal, dicoba lagi dalam %s detik", args.watch)
-        else:
-            logging.info("Selesai: %s", report.summary())
-            if not args.watch:
-                return 1 if report.failed else 0
-            elif args.csv_dir:
+            if args.csv_dir:
                 book = CsvSpreadsheet(args.csv_dir)
             elif public:
                 book = PublicSpreadsheet(cfg)
@@ -98,19 +81,25 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             time.sleep(args.watch)
             continue
-        report = Syncer(
-            cfg, gitlab,
-            assistant=assistant,
-            dry_run=args.dry_run,
-            status_sync=args.status_sync,
-            only_rows=set(args.row) if args.row else None,
-            read_only=public,
-        ).run(book, types)
-        logging.info("Selesai: %s", report.summary())
-        if not args.watch:
-            return 1 if report.failed else 0
+        try:
+            report = Syncer(
+                cfg, gitlab,
+                assistant=assistant,
+                dry_run=args.dry_run,
+                status_sync=args.status_sync,
+                only_rows=set(args.row) if args.row else None,
+                read_only=public,
+            ).run(book, types)
+        except Exception:
+            if not args.watch:
+                raise
+            # in watch mode an unexpected error must not kill the long-running process
+            logging.exception("Sync gagal, dicoba lagi dalam %s detik", args.watch)
+        else:
+            logging.info("Selesai: %s", report.summary())
+            if not args.watch:
+                return 1 if report.failed else 0
         time.sleep(args.watch)
-
 
 if __name__ == "__main__":
     sys.exit(main())
